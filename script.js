@@ -161,13 +161,14 @@ class Ast {
     inorder_helper(node) {
         if (node != null) {
             //TODO: add parentheses
-            this.inorder_helper(node.left);
+            //Have to do right first for some reason
+            this.inorder_helper(node.right);
             let dom_el = "<div class='equation' onclick='handle_eval(\"" + currDomLayer.toString() + "\", \"" 
             + node.index.toString() + "\")' id='" + currDomLayer.toString() 
             + "index" + node.index.toString() + "' style='display:inline'>" + node.val + "</div>";
             $('#output' + currDomLayer.toString()).append(dom_el);
             console.log('hello');
-            this.inorder_helper(node.right);
+            this.inorder_helper(node.left);
         }
     }
     
