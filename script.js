@@ -30,10 +30,70 @@ $(document).ready(function () {
     $('#enter').click(process_input);
 });
 
+// class Node {
+//     constructor(val, precedence, parent) {
+//         this.val = val;
+//         this.precedence = precedence;
+//         this.parent = parent;
+//         this.children = [];
+//         this.index = astIndex;
+
+//         astIndex++;
+//     }
+// }
+
+// class AST {
+//     constructor(input_str, ast = null) {
+//         this.input_str = input_str;
+//         this.ast = ast;
+//     }
+
+//     parse_input() {
+//         let token_list = [];
+//         let input_split = this.input_str.split(/(\D)/);
+//         for (var i = 0; i < this.input_split.length; i++) {
+//             if (input_split[i] == "") {
+//                 continue;
+//             }
+//             else if (input_split[i] == "-") {
+//                 token_list.append("+");
+//                 token_list.append("-" + input_split[i + 1]);
+//                 i++;
+//             }
+//             else {
+//                 token_list.append(input_split[i]);
+//             }
+//         }
+//         return token_list;
+//     }
+
+//     initialize_ast() {
+//         let processed_input = parse_input();
+
+//         let head_node = new Node(null, 0, null);
+//         let curr_node = head_node;
+//         for (var i = 0; i < processed_input.length; i++) {
+//             switch(processed_input[i]) {
+//                 case "(":
+//                     let paren_node = new Node(null, 4, head_node);
+//                     head_node.children.append(paren_node);
+//                     curr_node = paren_node;
+//                     break;
+//                 case ")":
+//                     curr_node = curr_node.parent;
+//                 default:
+
+//             }
+//         }
+//     }
+// }
+
 class AstNode {
-    constructor(val, left, right) {
+    constructor(val, left, right, parent = null) {
         this.val = val;
         this.index = astIndex;
+        this.parent = parent;
+        this.paren_level = 0;
 
         //Global astIndex count
         //Might change to some local counter later
@@ -88,15 +148,23 @@ class Ast {
         return out_arr
     }
     
-    addNode(operandStack, top) {
+    addNode(operandStack, top, incr_paren_level = false) {
         let left = operandStack.pop();
         let right = operandStack.pop();
-
-        operandStack.push(new AstNode(top, left, right));
+        left.parent = top;
+        right.parent = top;
+        let new_node = new AstNode(top, left, right);
+        if (incr_paren_level) {
+            new_node.paren_level++;
+        }
+        operandStack.push(new_node);
         //Need return?
         return operandStack;
     }
-
+    //Have all elements be some new datatype
+    //Store parenthesized objects together (another array?)
+    //Check the precedence of surrounding elements when clicking
+    // {elt:, parent:, children:, precedence:}
     //Adapted from the Java implementation of the Shunting-Yard Algorithm:
     //https://www.klittlepage.com/2013/12/22/twelve-days-2013-shunting-yard-algorithm/
     initialize_ast() {
@@ -124,7 +192,7 @@ class Ast {
                             continue outer;
                         }
                         else {
-                            this.addNode(operandStack, top);
+                            this.addNode(operandStack, top, true);
                         }
                     }
                     throw new Error('Unbalanced Left and Right Parentheses');
@@ -132,7 +200,7 @@ class Ast {
                     if (operators.includes(char)) {
                         while (operatorStack.length != 0) {
                             let op2 = operatorStack[operatorStack.length - 1];
-                            if (prec[char] <= prec[op2]) {
+                            if (prec[char] >= prec[op2]) {
                                 operatorStack.pop();
                                 operandStack = this.addNode(operandStack, op2);
                             }
@@ -198,23 +266,117 @@ class Ast {
         let right = this.binary_search(node.right, index);
         return right;
     }
-    
+
+    //Handle parentheses with precedence levels
+    compare_prec(node1, node2) {
+        let prec1 = prec[node1.val];
+        let prec2 = prec[node2.val];
+        prec1 += node1.paren_level * 10;
+        prec2 += node2.paren_level * 10;
+        return prec1 > prec2;
+    }
+
+    //Need to handle left.right.right
+    closest_predecessor(node) {
+        if (node.left.right != null) {
+            //Compare precedence
+            let currnode = node.left;
+            while (currnode.right.right != null) {
+                currnode = currnode.right;
+            }
+            if (this.compare_prec(currnode, node)) {
+                return null;
+            }
+            return parseInt(currnode.right.val);
+        }
+        return parseInt(node.left.val);
+    }
+
+    closest_successor(node) {
+        if (node.right.left != null) {
+            //Compare precedence
+            let currnode = node.right;
+            while (currnode.left.left != null) {
+                currnode = currnode.left;
+            }
+            if (this.compare_prec(currnode, node)) {
+                return null;
+            }
+            return parseInt(currnode.left.val);
+        }
+        return parseInt(node.right.val);
+    }
+
     //Issue: currently evaluates the subtrees
     //Desired behavior: closest successor/closest predecessor
     //Bug: sometimes evaluates incorrectly
     recursive_eval(node) {
+        let leftval = this.closest_predecessor(node);
+        let rightval = this.closest_successor(node);
+        if ((node.parent != null && this.compare_prec(node.parent, node)) || leftval == null || rightval == null) {
+            return null;
+        }
         switch (node.val) {
             case "+":
-                return this.recursive_eval(node.left) + this.recursive_eval(node.right);
+                return leftval + rightval;
             case "-":
-                return this.recursive_eval(node.left) - this.recursive_eval(node.right);
+                return leftval - rightval;
             case "*":
-                return this.recursive_eval(node.left) * this.recursive_eval(node.right);
+                return leftval * rightval;
             case "/":
-                return this.recursive_eval(node.left) / this.recursive_eval(node.right);
-            default:
-                return parseInt(node.val);
+                return leftval / rightval;
         }
+    }
+
+    get_unique_vars(node, currList) {
+        if (!currList.includes(node.val) && !operators.includes(node.val) && isNaN(parseInt(node.val))) {
+            currList.push(node.val);
+        }
+        if (node.left != null) {
+            currList = this.get_unique_vars(node.left, currList);
+        }
+        if (node.right != null) {
+            currList = this.get_unique_vars(node.right, currList);
+        }
+        return currList;
+    }
+
+    get_expr(node, currList) {
+        if (node.right != null) {
+            currList = this.get_expr(node.right, currList);
+        }
+        currList.push(node.val);
+        if (node.left != null) {
+            currList = this.get_expr(node.left, currList);
+        }
+        return currList;
+    }
+
+    to_coq() {
+        let file_header = "Require Import Reals.\nOpen Scope R_scope.\nTheorem equiv_exp:";
+        let unique_var = this.get_unique_vars(this.ast, []);
+        if (unique_var.length != 0) {
+            file_header += "forall ";
+        }
+        for (var i = 0; i < unique_var.length; i++) {
+            file_header += unique_var[i] + ", ";
+        }
+        file_header += this.get_expr(this.ast, []).join('') + ' = ' + asts[currDomLayer - 1].get_expr(asts[currDomLayer - 1].ast, []).join('') + ".\n";
+        file_header += "Proof. intros";
+        for (var i = 0; i < unique_var.length; i++) {
+            file_header += " " + unique_var[i];
+        }
+        file_header += ". field. Qed.";
+        //Write to file, execute on command line
+        var blob = new Blob([file_header],
+                { type: "text/plain;charset=utf-8" });
+        let coq_file = document.createElement('a');
+        coq_file.href= URL.createObjectURL(blob);
+        coq_file.download = "static.txt";
+        coq_file.click();
+
+        URL.revokeObjectURL(coq_file.href);
+
     }
 
     handle_eval(index) {
@@ -224,12 +386,20 @@ class Ast {
         //Issue: currently deletes an extra line if an operater on a line that has a currDomLayer > 0 is pressed.
         if (!operators.includes(clicked_node.val)) {
             console.log("Can't click on numbers");
-            return;
+            return null;
         }
         let new_val = this.recursive_eval(clicked_node);
+        console.log(new_val);
+        if (new_val == null) {
+            console.log("Can't evaluate");
+            return null;
+        }
         
         let new_ast = structuredClone(this.ast);
         let new_ast_node = this.binary_search(new_ast, index);
+        //Need to redo this part
+        //remove node, remove two values, set leftnode of the closest successor to be the original leftnode, set the rightnode
+        //of the closest predecessor to be the new value
         new_ast_node.val = new_val;
         new_ast_node.left = null;
         new_ast_node.right = null;
@@ -237,6 +407,8 @@ class Ast {
        return new_ast;
 
     }
+
+    
 }
 
 function handle_eval(currDom, index) {
@@ -250,9 +422,16 @@ function handle_eval(currDom, index) {
     }
     currDomLayer = parseInt(currDom) + 1;
     new_ast = asts[asts.length - 1].handle_eval(parseInt(index));
+    if (new_ast == null) {
+        currDomLayer--;
+        return;
+    }
+
 
     let next_ast = new Ast("", new_ast);
+    
     asts.push(next_ast);
+    next_ast.to_coq();
     next_ast.to_html();
 }
 
