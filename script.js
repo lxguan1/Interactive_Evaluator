@@ -307,27 +307,6 @@ class Ast {
         return parseInt(node.right.val);
     }
 
-    //Issue: currently evaluates the subtrees
-    //Desired behavior: closest successor/closest predecessor
-    //Bug: sometimes evaluates incorrectly
-    recursive_eval(node) {
-        let leftval = this.closest_predecessor(node);
-        let rightval = this.closest_successor(node);
-        if ((node.parent != null && this.compare_prec(node.parent, node)) || leftval == null || rightval == null) {
-            return null;
-        }
-        switch (node.val) {
-            case "+":
-                return leftval + rightval;
-            case "-":
-                return leftval - rightval;
-            case "*":
-                return leftval * rightval;
-            case "/":
-                return leftval / rightval;
-        }
-    }
-
     get_unique_vars(node, currList) {
         if (!currList.includes(node.val) && !operators.includes(node.val) && isNaN(parseInt(node.val))) {
             currList.push(node.val);
@@ -341,19 +320,27 @@ class Ast {
         return currList;
     }
 
-    get_expr(node, currList) {
+    get_expr(node, currList, nodelist = false) {
         if (node.right != null) {
             currList = this.get_expr(node.right, currList);
         }
-        currList.push(node.val);
+        if (nodelist) {
+            currList.push(node);
+        }
+        else {
+            currList.push(node.val);
+        }
         if (node.left != null) {
             currList = this.get_expr(node.left, currList);
         }
         return currList;
     }
 
-    to_coq() {
-        let file_header = "Require Import Reals.\nOpen Scope R_scope.\nTheorem equiv_exp:";
+    to_coq(index) {
+        //Import libraries
+        let file_header = "Require Import Reals.\n" + this.coq_import + "\nTheorem equiv_exp:";
+
+        //Get variables in the expressions
         let unique_var = this.get_unique_vars(this.ast, []);
         if (unique_var.length != 0) {
             file_header += "forall ";
@@ -361,12 +348,27 @@ class Ast {
         for (var i = 0; i < unique_var.length; i++) {
             file_header += unique_var[i] + ", ";
         }
-        file_header += this.get_expr(this.ast, []).join('') + ' = ' + asts[currDomLayer - 1].get_expr(asts[currDomLayer - 1].ast, []).join('') + ".\n";
-        file_header += "Proof. intros";
-        for (var i = 0; i < unique_var.length; i++) {
-            file_header += " " + unique_var[i];
+
+        //Get the index of the rewrite
+        let prev_expression = asts[currDomLayer - 1].get_expr(asts[currDomLayer - 1].ast, [], true);
+        let expr_idx = 1;
+        for (var i = 0; i < prev_expression.length; i++) {
+            if (parseInt(prev_expression[i].index) == index) {
+                expr_idx += 1;
+                break;
+            }
+            else if (parseInt(prev_expression[i].val) >= this.result) {
+                expr_idx += 1;
+            }
         }
-        file_header += ". field. Qed.";
+
+        //Write the Proof
+        file_header += this.get_expr(this.ast, []).join('') + ' = ' + asts[asts.length - 1].get_expr(asts[asts.length - 1].ast, []).join('') + ".\n";
+        file_header += "Proof.\n intros.\n";
+        file_header += "cut (" + this.cut  + "=" + this.result + ").\n";
+        file_header += "- intros. rewrite <- H at " + expr_idx + ". reflexivity.\n";
+        file_header += "- intros. cbv. reflexivity.\n";
+        file_header += "Qed.";
         //Write to file, execute on command line
         var blob = new Blob([file_header],
                 { type: "text/plain;charset=utf-8" });
@@ -377,6 +379,35 @@ class Ast {
 
         URL.revokeObjectURL(coq_file.href);
 
+    }
+
+    //Issue: currently evaluates the subtrees
+    //Desired behavior: closest successor/closest predecessor
+    //Bug: sometimes evaluates incorrectly
+    recursive_eval(node) {
+        let leftval = this.closest_predecessor(node);
+        let rightval = this.closest_successor(node);
+        if ((node.parent != null && this.compare_prec(node.parent, node)) || leftval == null || rightval == null) {
+            return null;
+        }
+        switch (node.val) {
+            case "+":
+                this.coq_import = "Require Export Plus.";
+                this.cut = leftval + "+" + rightval;
+                return leftval + rightval;
+            case "-":
+                this.coq_import = "Require Export Minus.";
+                this.cut = leftval + "-" + rightval;
+                return leftval - rightval;
+            case "*":
+                this.coq_import = "Require Export Mult.";
+                this.cut = leftval + "*" + rightval;
+                return leftval * rightval;
+            case "/":
+                this.coq_import = "Require Export Div.";
+                this.cut = leftval + "/" + rightval;
+                return leftval / rightval;
+        }
     }
 
     handle_eval(index) {
@@ -394,12 +425,23 @@ class Ast {
             console.log("Can't evaluate");
             return null;
         }
+
+        this.result = new_val;
         
         let new_ast = structuredClone(this.ast);
         let new_ast_node = this.binary_search(new_ast, index);
         //Need to redo this part
         //remove node, remove two values, set leftnode of the closest successor to be the original leftnode, set the rightnode
         //of the closest predecessor to be the new value
+        // let leftval = this.closest_predecessor(clicked_node);
+        // let rightval = this.closest_successor(clicked_node);
+        // let parentNode = null;
+        // if (parentNode.left == clicked_node) {
+            
+        // }
+        // else {
+
+        // }
         new_ast_node.val = new_val;
         new_ast_node.left = null;
         new_ast_node.right = null;
@@ -431,7 +473,8 @@ function handle_eval(currDom, index) {
     let next_ast = new Ast("", new_ast);
     
     asts.push(next_ast);
-    next_ast.to_coq();
+    asts[asts.length - 2].to_coq(index);
+    console.log(asts[asts.length - 1]);
     next_ast.to_html();
 }
 
