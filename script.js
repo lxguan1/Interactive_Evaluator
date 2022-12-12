@@ -24,6 +24,7 @@ var astIndex = 0; //Incremented infinitely
 var currDomLayer = 0;
 
 var asts = [];
+var coq_proof = [];
 var operators = ["+", "-", "*", "/"];
 
 $(document).ready(function () {
@@ -178,7 +179,7 @@ class Ast {
 
         outer: for (var i = 0; i < processed_input.length; i++) {
             let char = processed_input[i];
-            console.log(char);
+            //console.log(char);
             switch(char) {
                 case "":
                     break;
@@ -222,8 +223,14 @@ class Ast {
             this.addNode(operandStack, operatorStack.pop());
         }
         this.ast = operandStack.pop();
-        console.log(operandStack);
-        console.log(this.ast);
+
+        //Set indices
+        let expression = this.get_expr(this.ast, [], true);
+        for (var i = 0; i < expression.length; i++) {
+            expression[i].index = i;
+        }
+        //console.log(operandStack);
+        //console.log(this.ast);
     }
 
     inorder_helper(node) {
@@ -277,35 +284,35 @@ class Ast {
     }
 
     //Need to handle left.right.right
-    closest_predecessor(node) {
-        if (node.left.right != null) {
-            //Compare precedence
-            let currnode = node.left;
-            while (currnode.right.right != null) {
-                currnode = currnode.right;
-            }
-            if (this.compare_prec(currnode, node)) {
-                return null;
-            }
-            return parseInt(currnode.right.val);
-        }
-        return parseInt(node.left.val);
-    }
+    // closest_predecessor(node) {
+    //     if (node.left.right != null) {
+    //         //Compare precedence
+    //         let currnode = node.left;
+    //         while (currnode.right.right != null) {
+    //             currnode = currnode.right;
+    //         }
+    //         if (this.compare_prec(currnode, node)) {
+    //             return null;
+    //         }
+    //         return parseInt(currnode.right.val);
+    //     }
+    //     return parseInt(node.left.val);
+    // }
 
-    closest_successor(node) {
-        if (node.right.left != null) {
-            //Compare precedence
-            let currnode = node.right;
-            while (currnode.left.left != null) {
-                currnode = currnode.left;
-            }
-            if (this.compare_prec(currnode, node)) {
-                return null;
-            }
-            return parseInt(currnode.left.val);
-        }
-        return parseInt(node.right.val);
-    }
+    // closest_successor(node) {
+    //     if (node.right.left != null) {
+    //         //Compare precedence
+    //         let currnode = node.right;
+    //         while (currnode.left.left != null) {
+    //             currnode = currnode.left;
+    //         }
+    //         if (this.compare_prec(currnode, node)) {
+    //             return null;
+    //         }
+    //         return parseInt(currnode.left.val);
+    //     }
+    //     return parseInt(node.right.val);
+    // }
 
     get_unique_vars(node, currList) {
         if (!currList.includes(node.val) && !operators.includes(node.val) && isNaN(parseInt(node.val))) {
@@ -322,7 +329,7 @@ class Ast {
 
     get_expr(node, currList, nodelist = false) {
         if (node.right != null) {
-            currList = this.get_expr(node.right, currList);
+            currList = this.get_expr(node.right, currList, nodelist);
         }
         if (nodelist) {
             currList.push(node);
@@ -331,14 +338,14 @@ class Ast {
             currList.push(node.val);
         }
         if (node.left != null) {
-            currList = this.get_expr(node.left, currList);
+            currList = this.get_expr(node.left, currList, nodelist);
         }
         return currList;
     }
 
     to_coq(index) {
         //Import libraries
-        let file_header = "Require Import Reals.\n" + this.coq_import + "\nTheorem equiv_exp:";
+        let file_header = "Lemma equiv_exp" + currDomLayer + ":";
 
         //Get variables in the expressions
         let unique_var = this.get_unique_vars(this.ast, []);
@@ -350,11 +357,12 @@ class Ast {
         }
 
         //Get the index of the rewrite
-        let prev_expression = asts[currDomLayer - 1].get_expr(asts[currDomLayer - 1].ast, [], true);
+        let prev_expression = asts[asts.length - 1].get_expr(asts[asts.length - 1].ast, [], true);
         let expr_idx = 1;
         for (var i = 0; i < prev_expression.length; i++) {
-            if (parseInt(prev_expression[i].index) == index) {
-                expr_idx += 1;
+            console.log(prev_expression[i]);
+            if (parseInt(prev_expression[i].index) == this.index) {
+                console.log(prev_expression[i]);
                 break;
             }
             else if (parseInt(prev_expression[i].val) >= this.result) {
@@ -363,21 +371,17 @@ class Ast {
         }
 
         //Write the Proof
-        file_header += this.get_expr(this.ast, []).join('') + ' = ' + asts[asts.length - 1].get_expr(asts[asts.length - 1].ast, []).join('') + ".\n";
+        file_header += asts[asts.length - 1].get_expr(asts[asts.length - 1].ast, []).join('') + ' = ' + this.get_expr(this.ast, []).join('') + ".\n";
         file_header += "Proof.\n intros.\n";
         file_header += "cut (" + this.cut  + "=" + this.result + ").\n";
-        file_header += "- intros. rewrite <- H at " + expr_idx + ". reflexivity.\n";
+        file_header += "- intros. rewrite <- H at " + expr_idx + ". " + this.assoc + " reflexivity.\n";
         file_header += "- intros. cbv. reflexivity.\n";
-        file_header += "Qed.";
-        //Write to file, execute on command line
-        var blob = new Blob([file_header],
-                { type: "text/plain;charset=utf-8" });
-        let coq_file = document.createElement('a');
-        coq_file.href= URL.createObjectURL(blob);
-        coq_file.download = "static.txt";
-        coq_file.click();
+        file_header += "Qed.\n";
 
-        URL.revokeObjectURL(coq_file.href);
+        //Push the lemma to the whole proof
+        coq_proof.push(file_header);
+        
+        
 
     }
 
@@ -385,28 +389,70 @@ class Ast {
     //Desired behavior: closest successor/closest predecessor
     //Bug: sometimes evaluates incorrectly
     recursive_eval(node) {
-        let leftval = this.closest_predecessor(node);
-        let rightval = this.closest_successor(node);
-        if ((node.parent != null && this.compare_prec(node.parent, node)) || leftval == null || rightval == null) {
-            return null;
-        }
-        switch (node.val) {
-            case "+":
-                this.coq_import = "Require Export Plus.";
-                this.cut = leftval + "+" + rightval;
-                return leftval + rightval;
-            case "-":
-                this.coq_import = "Require Export Minus.";
-                this.cut = leftval + "-" + rightval;
-                return leftval - rightval;
-            case "*":
-                this.coq_import = "Require Export Mult.";
-                this.cut = leftval + "*" + rightval;
-                return leftval * rightval;
-            case "/":
-                this.coq_import = "Require Export Div.";
-                this.cut = leftval + "/" + rightval;
-                return leftval / rightval;
+        let expression = this.get_expr(this.ast, [], true);
+        //(expression);
+        for (var i = 0; i < expression.length; i++) {
+            if (expression[i].index == node.index) {
+                //Compare Left
+                //console.log(expression[i - 1].val);
+                if (i > 2 && this.compare_prec(expression[i - 2], node) || isNaN(parseInt(expression[i - 1].val))) {
+                    //Don't evaluate when one of the terms on either side of the operator
+                    //Is part of a subterm that has higher precedence
+                    console.log("left");
+                    return null;
+                }
+                let leftVal = parseInt(expression[i - 1].val);
+
+                //Compare Right
+                if (i < expression.length - 3 
+                    && this.compare_prec(expression[i + 2], node) || isNaN(parseInt(expression[i + 1].val))) {
+                    console.log("right");
+                    //Don't evaluate when one of the terms on either side of the operator
+                    //Is part of a subterm that has higher precedence
+                    return null;
+                }
+                let rightVal = parseInt(expression[i + 1].val);
+                let expression_vals = this.get_expr(this.ast, []);
+                let ret_arr = expression_vals.slice(0,i - 1);
+                console.log(expression[i]);
+                this.index = i - 1;
+                //Switch
+                //let result = 0;
+                switch (node.val) {
+                    case "+":
+                        this.assoc = "rewrite -> Nat.add_assoc. ";
+                        this.cut = leftVal + "+" + rightVal;
+                        this.result = leftVal + rightVal;
+                        ret_arr.push(this.result);
+                        return ret_arr.concat(expression_vals.slice(i + 2)).join('');
+                    case "-":
+                        this.assoc = "";
+                        this.cut = leftVal + "-" + rightVal;
+                        this.result = leftVal - rightVal;
+                        ret_arr.push(this.result);
+                        return ret_arr.concat(expression_vals.slice(i + 2)).join('');
+                    case "*":
+                        this.assoc = "";
+                        this.cut = leftVal + "*" + rightVal;
+                        this.result = leftVal * rightVal;
+                        ret_arr.push(this.result);
+                        return ret_arr.concat(expression_vals.slice(i + 2)).join('');
+                    case "/":
+                        this.assoc = "";
+                        this.cut = leftVal + "/" + rightVal;
+                        this.result = leftVal / rightVal;
+                        ret_arr.push(this.result);
+                        return ret_arr.concat(expression_vals.slice(i + 2)).join('');
+                    default:
+                        throw Error();
+                }
+                
+                
+                //console.log(this.result);
+                
+
+
+            }
         }
     }
 
@@ -420,31 +466,12 @@ class Ast {
             return null;
         }
         let new_val = this.recursive_eval(clicked_node);
-        console.log(new_val);
-        if (new_val == null) {
-            console.log("Can't evaluate");
-            return null;
-        }
 
-        this.result = new_val;
-        
-        let new_ast = structuredClone(this.ast);
-        let new_ast_node = this.binary_search(new_ast, index);
-        //Need to redo this part
-        //remove node, remove two values, set leftnode of the closest successor to be the original leftnode, set the rightnode
-        //of the closest predecessor to be the new value
-        // let leftval = this.closest_predecessor(clicked_node);
-        // let rightval = this.closest_successor(clicked_node);
-        // let parentNode = null;
-        // if (parentNode.left == clicked_node) {
-            
-        // }
-        // else {
 
-        // }
-        new_ast_node.val = new_val;
-        new_ast_node.left = null;
-        new_ast_node.right = null;
+        //this.result = new_val;
+
+        let new_ast = new Ast(new_val);
+        new_ast.initialize_ast();
         
        return new_ast;
 
@@ -453,14 +480,56 @@ class Ast {
     
 }
 
+function coq_proof_construction() {
+    file_header = "Require Import Nat. \n";
+    file_header += "Require Export Plus.\n";
+    file_header += "Require Export Mult.\n";
+    coq_proof.slice().reverse().forEach(x => file_header += x);
+    file_header += "Theorem equiv_exp:";
+
+    initial = asts[0].get_expr(asts[0].ast, []);
+    end = asts[asts.length - 1].get_expr(asts[asts.length - 1].ast, []);
+
+    //If there are variables
+    let unique_var = asts[0].get_unique_vars(asts[0].ast, []);
+    if (unique_var.length != 0) {
+        file_header += "forall ";
+    }
+    for (var i = 0; i < unique_var.length; i++) {
+        file_header += unique_var[i] + ", ";
+    }
+
+    //Add expressions
+    file_header += end.join('')  + "=" + initial.join('') + ".\n";
+
+    //Rewrite everything using the lemmas, from last to first
+    file_header += "Proof.\n intros.\n";
+    for (var i = coq_proof.length - 1; i >= 0; i--) {
+        file_header += "rewrite -> equiv_exp" + (i + 1) + ".\n";
+    }
+    //Reflexivity
+    file_header += "reflexivity. Qed.";
+
+    //Write to file, execute on command line
+    var blob = new Blob([file_header],
+        { type: "text/plain;charset=utf-8" });
+    let coq_file = document.createElement('a');
+    coq_file.href= URL.createObjectURL(blob);
+    coq_file.download = "static.txt";
+    coq_file.click();
+
+    URL.revokeObjectURL(coq_file.href);
+}
+
 function handle_eval(currDom, index) {
     
-
+    astIndex = 0;
 
     //Remove all elements after the currDom val
     for (var i = parseInt(currDom); i < asts.length - 1; i++) {
         $("#outputs").children().last().remove();
         asts.pop();
+        coq_proof.pop();
     }
     currDomLayer = parseInt(currDom) + 1;
     new_ast = asts[asts.length - 1].handle_eval(parseInt(index));
@@ -470,12 +539,12 @@ function handle_eval(currDom, index) {
     }
 
 
-    let next_ast = new Ast("", new_ast);
+    //let next_ast = new Ast("", new_ast);
     
-    asts.push(next_ast);
+    asts.push(new_ast);
     asts[asts.length - 2].to_coq(index);
-    console.log(asts[asts.length - 1]);
-    next_ast.to_html();
+    //console.log(asts[asts.length - 1]);
+    new_ast.to_html();
 }
 
 
@@ -483,6 +552,7 @@ function handle_eval(currDom, index) {
 function process_input() {
     document.getElementById('outputs').replaceChildren();
     asts = [];
+    coq_proof = [];
     currDomLayer = 0;
     astIndex = 0;
     let input_str = $('#input').val();
