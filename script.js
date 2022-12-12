@@ -1,11 +1,13 @@
-// Special classes to handle +,-,*,=?
-// Connection to Coq, 
-// Div for each supported element, render them somehow?
-// Use AST to get the necessary div elements <-
-// Tokenize the input, wrapping each token in a span. Then have an onclick
+/*
+*This program is an interactive expression evaluator that generates a proof of
+*the evaluation's correctness in Coq.
+*Author: Lingxiao Guan
+*Last edit: 12/12/2022
+*/
 
 
-
+//Associativity and precedences of the operations
+//Associativity not used as of now
 var assoc = {
     "*" : "left",
     "/" : "left",
@@ -20,121 +22,65 @@ var prec = {
     "-" : 2
 };
 
-var astIndex = 0; //Incremented infinitely
+//Global variable that represents the most recently generated expression
+//e.g.
+//1 + 2 + 3
+//3 + 3 <- the currDomLayer
 var currDomLayer = 0;
 
+//The asts of all of the expression layers
 var asts = [];
-var coq_proof = [];
-var operators = ["+", "-", "*", "/"];
 
+//The proofs of all of the expression layers
+var coq_proof = [];
+
+//Start up the document
 $(document).ready(function () {
     $('#enter').click(process_input);
 });
 
-// class Node {
-//     constructor(val, precedence, parent) {
-//         this.val = val;
-//         this.precedence = precedence;
-//         this.parent = parent;
-//         this.children = [];
-//         this.index = astIndex;
 
-//         astIndex++;
-//     }
-// }
-
-// class AST {
-//     constructor(input_str, ast = null) {
-//         this.input_str = input_str;
-//         this.ast = ast;
-//     }
-
-//     parse_input() {
-//         let token_list = [];
-//         let input_split = this.input_str.split(/(\D)/);
-//         for (var i = 0; i < this.input_split.length; i++) {
-//             if (input_split[i] == "") {
-//                 continue;
-//             }
-//             else if (input_split[i] == "-") {
-//                 token_list.append("+");
-//                 token_list.append("-" + input_split[i + 1]);
-//                 i++;
-//             }
-//             else {
-//                 token_list.append(input_split[i]);
-//             }
-//         }
-//         return token_list;
-//     }
-
-//     initialize_ast() {
-//         let processed_input = parse_input();
-
-//         let head_node = new Node(null, 0, null);
-//         let curr_node = head_node;
-//         for (var i = 0; i < processed_input.length; i++) {
-//             switch(processed_input[i]) {
-//                 case "(":
-//                     let paren_node = new Node(null, 4, head_node);
-//                     head_node.children.append(paren_node);
-//                     curr_node = paren_node;
-//                     break;
-//                 case ")":
-//                     curr_node = curr_node.parent;
-//                 default:
-
-//             }
-//         }
-//     }
-// }
-
+//The data structure for each element in an expression
+//Contain:
+//val (either a number, variable, or operation)
+//index (location of the element if the expression is displayed left to right)
+//paren_level (how many parentheses deep is the element)
+//left the left child
+//right the right child
 class AstNode {
-    constructor(val, left, right, parent = null) {
+    constructor(val, left, right) {
         this.val = val;
-        this.index = astIndex;
-        this.parent = parent;
+        this.index = 0;
         this.paren_level = 0;
 
-        //Global astIndex count
-        //Might change to some local counter later
-        astIndex++;
         this.left = left;
         this.right = right;
     }
-
-    setRight(node) {
-        this.right = node;
-    }
-
-    setLeft(node) {
-        this.left = node;
-    }
 }
 
-// AST:
-// val
-// list of children
+// AST: data structure that represents one expression
 class Ast {
     constructor(input_str, ast = null) {
         this.input_str = input_str;
         this.ast = ast;
+        this.operators = ["+", "-", "*", "/"];
     }
     
+    //Handle negative values (e.g. -1), turn them into a single integer
+    //Needed since otherwise clicking on the '-' will evaluate a subexpression
     handle_negatives(token_arr) {
         let out_arr = [];
         let operator_set = new Set(['+', '-', '*', '/', '(']);
 
         for (var i = 0; i < token_arr.length; i++) {
-            //start of equation
-            
+            //Negative at start of equation
             if (i == 1 
                 && operator_set.has(token_arr[i - 1] == '-' 
                 && !operator_set.has(token_arr[i]))) {
                     out_arr.push('-' + token_arr[i]);
                     i++;
             }
-            //In the equation
+            //Negative in the equation
             else if (i > 1
                 && operator_set.has(token_arr[i - 2])
                 && operator_set.has(token_arr[i - 1] == '-' 
@@ -142,6 +88,7 @@ class Ast {
                     out_arr.push('-' + token_arr[i]);
                     i++;
             }
+            //Not a negative
             else {
                 out_arr.push(token_arr[i]);
             }
@@ -149,26 +96,24 @@ class Ast {
         return out_arr
     }
     
+    //Create a node, with its val as an operator, and its children being other nodes
     addNode(operandStack, top, incr_paren_level = false) {
         let left = operandStack.pop();
         let right = operandStack.pop();
-        left.parent = top;
-        right.parent = top;
         let new_node = new AstNode(top, left, right);
+
+        //If the value is inside of a set of parentheses
         if (incr_paren_level) {
             new_node.paren_level++;
         }
         operandStack.push(new_node);
-        //Need return?
-        return operandStack;
     }
-    //Have all elements be some new datatype
-    //Store parenthesized objects together (another array?)
-    //Check the precedence of surrounding elements when clicking
-    // {elt:, parent:, children:, precedence:}
-    //Adapted from the Java implementation of the Shunting-Yard Algorithm:
+    
+    //Make the AST from the input string, using the Shunting-Yard Algorithm
+    //This function is Adapted from the Java implementation of the Shunting-Yard Algorithm:
     //https://www.klittlepage.com/2013/12/22/twelve-days-2013-shunting-yard-algorithm/
     initialize_ast() {
+        //Split the input string into individual elements
         let split_input = this.input_str.split(/(\D)/);
         let processed_input = this.handle_negatives(split_input);
 
@@ -179,7 +124,6 @@ class Ast {
 
         outer: for (var i = 0; i < processed_input.length; i++) {
             let char = processed_input[i];
-            //console.log(char);
             switch(char) {
                 case "":
                     break;
@@ -196,14 +140,16 @@ class Ast {
                             this.addNode(operandStack, top, true);
                         }
                     }
+                    //Parentheses won't be matched if this is reached
+                    //The continue in the while loop would have run
                     throw new Error('Unbalanced Left and Right Parentheses');
                 default:
-                    if (operators.includes(char)) {
+                    if (this.operators.includes(char)) {
                         while (operatorStack.length != 0) {
                             let op2 = operatorStack[operatorStack.length - 1];
                             if (prec[char] >= prec[op2]) {
                                 operatorStack.pop();
-                                operandStack = this.addNode(operandStack, op2);
+                                this.addNode(operandStack, op2);
                             }
                             else {
                                 break;
@@ -229,36 +175,37 @@ class Ast {
         for (var i = 0; i < expression.length; i++) {
             expression[i].index = i;
         }
-        //console.log(operandStack);
-        //console.log(this.ast);
     }
 
     inorder_helper(node) {
         if (node != null) {
             //TODO: add parentheses
-            //Have to do right first for some reason
+            //Have to do right first
             this.inorder_helper(node.right);
             let dom_el = "<div class='equation' onclick='handle_eval(\"" + currDomLayer.toString() + "\", \"" 
             + node.index.toString() + "\")' id='" + currDomLayer.toString() 
             + "index" + node.index.toString() + "' style='display:inline'>" + node.val + "</div>";
             $('#output' + currDomLayer.toString()).append(dom_el);
-            console.log('hello');
             this.inorder_helper(node.left);
         }
     }
     
+    //Add the AST's expression to the dom
     to_html() {
         if (this.ast == null) {
             throw new Error('Initialize the AST');
         }
+
+        //Make a div container to hold the expression
         $("#outputs").append("<div id='output" + currDomLayer.toString() + "'></div>");
 
-        //Issue: how to access them later when clicked on?
-        //Assign an index to each astNode, binary search in evaluation
         this.inorder_helper(this.ast);
 
     }
-
+    
+    //Look for a node based on its index
+    //Returns the node if found
+    //Returns null if not
     binary_search(node, index) {
         if (node == null) {
             return null;
@@ -283,39 +230,11 @@ class Ast {
         return prec1 > prec2;
     }
 
-    //Need to handle left.right.right
-    // closest_predecessor(node) {
-    //     if (node.left.right != null) {
-    //         //Compare precedence
-    //         let currnode = node.left;
-    //         while (currnode.right.right != null) {
-    //             currnode = currnode.right;
-    //         }
-    //         if (this.compare_prec(currnode, node)) {
-    //             return null;
-    //         }
-    //         return parseInt(currnode.right.val);
-    //     }
-    //     return parseInt(node.left.val);
-    // }
 
-    // closest_successor(node) {
-    //     if (node.right.left != null) {
-    //         //Compare precedence
-    //         let currnode = node.right;
-    //         while (currnode.left.left != null) {
-    //             currnode = currnode.left;
-    //         }
-    //         if (this.compare_prec(currnode, node)) {
-    //             return null;
-    //         }
-    //         return parseInt(currnode.left.val);
-    //     }
-    //     return parseInt(node.right.val);
-    // }
-
+    //Get the unique variables in an expression
     get_unique_vars(node, currList) {
-        if (!currList.includes(node.val) && !operators.includes(node.val) && isNaN(parseInt(node.val))) {
+        //The current node value isn't in currList, isn't an operator, and isn't a number
+        if (!currList.includes(node.val) && !this.operators.includes(node.val) && isNaN(parseInt(node.val))) {
             currList.push(node.val);
         }
         if (node.left != null) {
@@ -327,6 +246,8 @@ class Ast {
         return currList;
     }
 
+    //Returns a list that contains either the element values of the expression if nodelist = false
+    //Or it contains the nodes of each element of the expression.
     get_expr(node, currList, nodelist = false) {
         if (node.right != null) {
             currList = this.get_expr(node.right, currList, nodelist);
@@ -343,8 +264,10 @@ class Ast {
         return currList;
     }
 
-    to_coq(index) {
-        //Import libraries
+    //Creates a Coq proof that proves the step from the previous expression to the current expression
+    //is valid. Stores it in the coq_proof array.
+    to_coq(asts, coq_proof) {
+        //Start the Lemma
         let file_header = "Lemma equiv_exp" + currDomLayer + ":";
 
         //Get variables in the expressions
@@ -360,9 +283,7 @@ class Ast {
         let prev_expression = asts[asts.length - 1].get_expr(asts[asts.length - 1].ast, [], true);
         let expr_idx = 1;
         for (var i = 0; i < prev_expression.length; i++) {
-            console.log(prev_expression[i]);
             if (parseInt(prev_expression[i].index) == this.index) {
-                console.log(prev_expression[i]);
                 break;
             }
             else if (parseInt(prev_expression[i].val) >= this.result) {
@@ -385,28 +306,32 @@ class Ast {
 
     }
 
-    //Issue: currently evaluates the subtrees
-    //Desired behavior: closest successor/closest predecessor
-    //Bug: sometimes evaluates incorrectly
+    //Evaluates an operation
+    //Gets the list of this expression, then iterates through it until it reaches the index that was clicked.
+    //Then does evaluation only if one of numbers on the left or right isn't a part of a higher precedence
+    //Operation.
     recursive_eval(node) {
         let expression = this.get_expr(this.ast, [], true);
-        //(expression);
         for (var i = 0; i < expression.length; i++) {
             if (expression[i].index == node.index) {
                 //Compare Left
-                //console.log(expression[i - 1].val);
                 if (i > 2 && this.compare_prec(expression[i - 2], node) || isNaN(parseInt(expression[i - 1].val))) {
                     //Don't evaluate when one of the terms on either side of the operator
-                    //Is part of a subterm that has higher precedence
-                    console.log("left");
+                    //is part of a subterm that has higher precedence
                     return null;
                 }
-                let leftVal = parseInt(expression[i - 1].val);
+                let leftVal = expression[i - 1].val;
+                //Handle subtraction on left
+                if (expression[i - 1].val == "-") {
+                    leftVal = parseInt(leftVal) > 0 ? "-" + leftVal : leftVal;
+                    expression[i - 1].val = "+";
+                }
+                leftVal = parseInt(leftVal);
+                
 
                 //Compare Right
                 if (i < expression.length - 3 
                     && this.compare_prec(expression[i + 2], node) || isNaN(parseInt(expression[i + 1].val))) {
-                    console.log("right");
                     //Don't evaluate when one of the terms on either side of the operator
                     //Is part of a subterm that has higher precedence
                     return null;
@@ -414,14 +339,19 @@ class Ast {
                 let rightVal = parseInt(expression[i + 1].val);
                 let expression_vals = this.get_expr(this.ast, []);
                 let ret_arr = expression_vals.slice(0,i - 1);
-                console.log(expression[i]);
+
+                //The index of the resulting element
                 this.index = i - 1;
-                //Switch
-                //let result = 0;
+                //Switch over the possible oeprators
+                //Code duplication in the switch statement due to strange Javascript behavior if the retval.push
+                //is placed after the switch statement.
                 switch (node.val) {
                     case "+":
+                        //Handles the parentheses the '+' rewrite adds
                         this.assoc = "rewrite -> Nat.add_assoc. ";
+                        //The operation that was done, will be placed in the cut tactic
                         this.cut = leftVal + "+" + rightVal;
+                        //Result of the '+' op
                         this.result = leftVal + rightVal;
                         ret_arr.push(this.result);
                         return ret_arr.concat(expression_vals.slice(i + 2)).join('');
@@ -447,9 +377,6 @@ class Ast {
                         throw Error();
                 }
                 
-                
-                //console.log(this.result);
-                
 
 
             }
@@ -461,7 +388,7 @@ class Ast {
         let clicked_node = this.binary_search(this.ast, index);
 
         //Issue: currently deletes an extra line if an operater on a line that has a currDomLayer > 0 is pressed.
-        if (!operators.includes(clicked_node.val)) {
+        if (!this.operators.includes(clicked_node.val)) {
             console.log("Can't click on numbers");
             return null;
         }
@@ -484,6 +411,8 @@ function coq_proof_construction() {
     file_header = "Require Import Nat. \n";
     file_header += "Require Export Plus.\n";
     file_header += "Require Export Mult.\n";
+
+    //Add Lemmas for each step
     coq_proof.slice().reverse().forEach(x => file_header += x);
     file_header += "Theorem equiv_exp:";
 
@@ -510,7 +439,7 @@ function coq_proof_construction() {
     //Reflexivity
     file_header += "reflexivity. Qed.";
 
-    //Write to file, execute on command line
+    //Write to file, execute on command line/copy to interactive Coq interfaces
     var blob = new Blob([file_header],
         { type: "text/plain;charset=utf-8" });
     let coq_file = document.createElement('a');
@@ -521,9 +450,8 @@ function coq_proof_construction() {
     URL.revokeObjectURL(coq_file.href);
 }
 
+//Handles evaluation when a user clicks on an element in an expression
 function handle_eval(currDom, index) {
-    
-    astIndex = 0;
 
     //Remove all elements after the currDom val
     for (var i = parseInt(currDom); i < asts.length - 1; i++) {
@@ -532,29 +460,33 @@ function handle_eval(currDom, index) {
         coq_proof.pop();
     }
     currDomLayer = parseInt(currDom) + 1;
+
+    //Evaluate
     new_ast = asts[asts.length - 1].handle_eval(parseInt(index));
+
+    //Terminate if there is a problem with evaluation
     if (new_ast == null) {
         currDomLayer--;
         return;
     }
 
 
-    //let next_ast = new Ast("", new_ast);
-    
+    //Calculate the Coq proof for this evaluation, put the new expression on the dom    
     asts.push(new_ast);
-    asts[asts.length - 2].to_coq(index);
-    //console.log(asts[asts.length - 1]);
+    asts[asts.length - 2].to_coq(asts, coq_proof);
     new_ast.to_html();
 }
 
 
-
+//Start evaluation of the expression that the user inputted into the input area
 function process_input() {
+    //Clear previous inputs
     document.getElementById('outputs').replaceChildren();
     asts = [];
     coq_proof = [];
     currDomLayer = 0;
-    astIndex = 0;
+
+    //Turn the input into an Ast and display it onto the dom
     let input_str = $('#input').val();
 
     let new_ast = new Ast(input_str);
