@@ -454,13 +454,12 @@ function coq_proof_construction() {
 function handle_eval(currDom, index) {
 
     //Remove all elements after the currDom val
-    for (var i = parseInt(currDom); i < asts.length - 1; i++) {
+    for (var i = asts.length - 1; i > parseInt(currDom); i--) {
         $("#outputs").children().last().remove();
         asts.pop();
         coq_proof.pop();
     }
     currDomLayer = parseInt(currDom) + 1;
-
     //Evaluate
     new_ast = asts[asts.length - 1].handle_eval(parseInt(index));
 
@@ -470,7 +469,7 @@ function handle_eval(currDom, index) {
         return;
     }
 
-
+    
     //Calculate the Coq proof for this evaluation, put the new expression on the dom    
     asts.push(new_ast);
     asts[asts.length - 2].to_coq(asts, coq_proof);
