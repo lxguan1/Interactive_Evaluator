@@ -369,6 +369,9 @@ class Ast {
                         return ret_arr.concat(expression_vals.slice(i + 2)).join('');
                     case "/":
                         this.assoc = "";
+                        if (rightVal == 0) {
+                            return null;
+                        }
                         this.cut = leftVal + "/" + rightVal;
                         this.result = leftVal / rightVal;
                         ret_arr.push(this.result);
