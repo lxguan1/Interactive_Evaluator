@@ -460,7 +460,7 @@ function to_latex() {
         else {
             ret_string += "&=";
         }
-        ret_string += asts[i].get_expr(asts[i].ast, []).join('') + "\n";
+        ret_string += asts[i].get_expr(asts[i].ast, []).join('') + "\\\\ \n";
     }
     ret_string += "\\end{align*}";
     navigator.clipboard.writeText(ret_string);
