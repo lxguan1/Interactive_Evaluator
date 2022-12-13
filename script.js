@@ -324,9 +324,9 @@ class Ast {
                 }
                 let leftVal = expression[i - 1].val;
                 //Handle subtraction on left
-                if (expression[i - 1].val == "-") {
+                if (expression[i - 2].val == "-") {
                     leftVal = parseInt(leftVal) > 0 ? "-" + leftVal : leftVal;
-                    expression[i - 1].val = "+";
+                    expression[i - 2].val = "+";
                 }
                 leftVal = parseInt(leftVal);
                 
@@ -350,7 +350,7 @@ class Ast {
                 switch (node.val) {
                     case "+":
                         //Handles the parentheses the '+' rewrite adds
-                        this.assoc = "rewrite -> Nat.add_assoc. ";
+                        this.assoc = "repeat rewrite Nat.add_assoc. ";
                         //The operation that was done, will be placed in the cut tactic
                         this.cut = leftVal + "+" + rightVal;
                         //Result of the '+' op
