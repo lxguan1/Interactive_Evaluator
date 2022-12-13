@@ -127,6 +127,8 @@ class Ast {
             switch(char) {
                 case "":
                     break;
+                case " ":
+                    break;
                 case '(':
                     operatorStack.push('(');
                     break;
