@@ -450,6 +450,22 @@ function coq_proof_construction() {
     URL.revokeObjectURL(coq_file.href);
 }
 
+//Outputs the expressions to LaTeX
+function to_latex() {
+    ret_string = "\\begin{align*}\n";
+    for (var i = 0; i < asts.length; i++) {
+        if (i == 0) {
+            ret_string += "&";
+        }
+        else {
+            ret_string += "&=";
+        }
+        ret_string += asts[i].get_expr(asts[i].ast, []).join('') + "\n";
+    }
+    ret_string += "\\end{align*}";
+    navigator.clipboard.writeText(ret_string);
+}
+
 //Handles evaluation when a user clicks on an element in an expression
 function handle_eval(currDom, index) {
 
