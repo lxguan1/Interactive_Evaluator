@@ -75,24 +75,30 @@ class Ast {
         for (var i = 0; i < token_arr.length; i++) {
             //Negative at start of equation
             if (i == 1 
-                && operator_set.has(token_arr[i - 1] == '-' 
-                && !operator_set.has(token_arr[i]))) {
+                && operator_set.has(token_arr[i - 1]) && token_arr[i - 1] == '-' 
+                && !operator_set.has(token_arr[i])) {
                     out_arr.push('-' + token_arr[i]);
                     i++;
+                    
             }
             //Negative in the equation
             else if (i > 1
-                && operator_set.has(token_arr[i - 2])
-                && operator_set.has(token_arr[i - 1] == '-' 
-                && !operator_set.has(token_arr[i]))) {
-                    out_arr.push('-' + token_arr[i]);
+                && operator_set.has(token_arr[i - 1])
+                && operator_set.has(token_arr[i]) && token_arr[i] == '-' 
+                && !operator_set.has(token_arr[i + 1])) {
+                    out_arr.push('-' + token_arr[i + 1]);
                     i++;
+                    
+                    
             }
             //Not a negative
             else {
                 out_arr.push(token_arr[i]);
+                
             }
+
         }
+
         return out_arr
     }
     
@@ -115,7 +121,7 @@ class Ast {
     initialize_ast() {
         //Split the input string into individual elements
         let split_input = this.input_str.split(/(\D)/);
-        let processed_input = this.handle_negatives(split_input);
+        let processed_input = this.handle_negatives(split_input.filter(x => x != ""));
 
         //Make AST with Shunting-yard algorithm
         
@@ -325,7 +331,7 @@ class Ast {
                 let leftVal = expression[i - 1].val;
                 //Handle subtraction on left
                 if (i > 2 && expression[i - 2].val == "-" && (expression[i].val == '+' || expression[i].val == '-')) {
-                    leftVal = parseInt(leftVal) > 0 ? "-" + leftVal : leftVal;
+                    leftVal = parseInt(leftVal) > 0 ? "-" + leftVal : (-1*parseInt(leftVal)).toString();
                     expression[i - 2].val = "+";
                 }
                 leftVal = parseInt(leftVal);
@@ -339,9 +345,10 @@ class Ast {
                     return null;
                 }
                 let rightVal = parseInt(expression[i + 1].val);
+                
                 let expression_vals = this.get_expr(this.ast, []);
+                
                 let ret_arr = expression_vals.slice(0,i - 1);
-
                 //The index of the resulting element
                 this.index = i - 1;
                 //Switch over the possible oeprators
@@ -404,8 +411,9 @@ class Ast {
 
         let new_ast = new Ast(new_val);
         new_ast.initialize_ast();
-        
+
        return new_ast;
+       
 
     }
 
