@@ -284,7 +284,10 @@ class Ast {
             file_header += "forall ";
         }
         for (var i = 0; i < unique_var.length; i++) {
-            file_header += unique_var[i] + ", ";
+            file_header += unique_var[i] + " ";
+            if (i == unique_var.length - 1) {
+                file_header += ", ";
+            }
         }
 
         //Get the index of the rewrite
@@ -438,7 +441,10 @@ function coq_proof_construction() {
         file_header += "forall ";
     }
     for (var i = 0; i < unique_var.length; i++) {
-        file_header += unique_var[i] + ", ";
+        file_header += unique_var[i] + " ";
+        if (i == unique_var.length - 1) {
+            file_header += ", ";
+        }
     }
 
     //Add expressions
