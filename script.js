@@ -324,7 +324,7 @@ class Ast {
                 }
                 let leftVal = expression[i - 1].val;
                 //Handle subtraction on left
-                if (expression[i - 2].val == "-") {
+                if (i > 2 && expression[i - 2].val == "-" && (expression[i].val == '+' || expression[i].val == '-')) {
                     leftVal = parseInt(leftVal) > 0 ? "-" + leftVal : leftVal;
                     expression[i - 2].val = "+";
                 }
