@@ -53,6 +53,8 @@ class AstNode {
         this.index = 0;
         this.paren_level = 0;
 
+        this.lparen=false;
+        this.rparen=false;
         this.left = left;
         this.right = right;
     }
@@ -97,9 +99,11 @@ class Ast {
     }
     
     //Create a node, with its val as an operator, and its children being other nodes
-    addNode(operandStack, top, incr_paren_level = false) {
+    addNode(operandStack, top, incr_paren_level = false, lparen=false, rparen=false) {
         let left = operandStack.pop();
         let right = operandStack.pop();
+        left.lparen = lparen;
+        right.rparen = rparen;
         let new_node = new AstNode(top, left, right);
 
         //If the value is inside of a set of parentheses
@@ -133,13 +137,21 @@ class Ast {
                     operatorStack.push('(');
                     break;
                 case ')':
+                    let rparen = false;
+                    let lparen = true;
                     while (operatorStack.length != 0) {
                         let top = operatorStack.pop();
                         if (top == "(") {
                             continue outer;
                         }
                         else {
-                            this.addNode(operandStack, top, true);
+
+                            //Add left and right parentheses
+                            if (operatorStack[operatorStack.length - 1] == "(") {
+                                rparen = true;
+                            }
+                            this.addNode(operandStack, top, true, lparen, rparen);
+                            lparen = false;
                         }
                     }
                     //Parentheses won't be matched if this is reached
@@ -184,9 +196,17 @@ class Ast {
             //TODO: add parentheses
             //Have to do right first
             this.inorder_helper(node.right);
+            let left = "";
+            let right = "";
+            if (node.lparen) {
+                left = "(";
+            }
+            if (node.rparen) {
+                right = ")";
+            }
             let dom_el = "<div class='equation' onclick='handle_eval(\"" + currDomLayer.toString() + "\", \"" 
             + node.index.toString() + "\")' id='" + currDomLayer.toString() 
-            + "index" + node.index.toString() + "' style='display:inline'>" + node.val + "</div>";
+            + "index" + node.index.toString() + "' style='display:inline'>" + left + node.val + right + "</div>";
             $('#output' + currDomLayer.toString()).append(dom_el);
             this.inorder_helper(node.left);
         }
