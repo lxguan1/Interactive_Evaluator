@@ -104,6 +104,16 @@ class Ast {
         return out_arr
     }
     
+    recursive_incr_parenlevel(node) {
+        if (node.left != null) {
+            this.recursive_incr_parenlevel(node.left);
+        }
+        node.paren_level += 1;
+        if (node.right != null) {
+            this.recursive_incr_parenlevel(node.right);
+        }
+    }
+
     //Create a node, with its val as an operator, and its children being other nodes
     addNode(operandStack, top, incr_paren_level = false, lparen=false, rparen=false) {
         let left = operandStack.pop();
@@ -113,9 +123,10 @@ class Ast {
         let new_node = new AstNode(top, left, right);
 
         //If the value is inside of a set of parentheses
-        if (incr_paren_level) {
-            new_node.paren_level++;
-        }
+        // if (incr_paren_level) {
+        //     new_node.paren_level++;
+        // }
+        //this.recursive_incr_parenlevel(new_node);
         operandStack.push(new_node);
     }
     
@@ -148,6 +159,7 @@ class Ast {
                     while (operatorStack.length != 0) {
                         let top = operatorStack.pop();
                         if (top == "(") {
+                            this.recursive_incr_parenlevel(operandStack[operandStack.length - 1]);
                             continue outer;
                         }
                         else {
@@ -197,28 +209,36 @@ class Ast {
         }
     }
 
-    inorder_helper(node) {
+    inorder_helper(node, left = "", right="") {
         if (node != null) {
             //TODO: add parentheses
             //Have to do right first
-            this.inorder_helper(node.right);
-            let left = "";
-            let right = "";
-            if (node.lparen) {
-                left = "(";
-            }
             if (node.rparen) {
-                right = ")";
+                this.inorder_helper(node.right, right = ")");
             }
+            else {
+                this.inorder_helper(node.right, right = "");
+            }
+            //let left = "";
+            //let right = "";
+            
+            
             let dom_el = "<div class='equation' onclick='handle_eval(\"" + currDomLayer.toString() + "\", \"" 
             + node.index.toString() + "\")' id='" + currDomLayer.toString() 
             + "index" + node.index.toString() + "' style='display:inline'>" + left + node.val + right + "</div>";
             $('#output' + currDomLayer.toString()).append(dom_el);
-            this.inorder_helper(node.left);
+            if (node.lparen) {
+                this.inorder_helper(node.left, left = "(");
+            }
+            else {
+                this.inorder_helper(node.left);
+            }
+            
         }
     }
     
     //Add the AST's expression to the dom
+    //TODO: use get_expr to print out parentheses
     to_html() {
         if (this.ast == null) {
             throw new Error('Initialize the AST');
@@ -227,7 +247,24 @@ class Ast {
         //Make a div container to hold the expression
         $("#outputs").append("<div id='output" + currDomLayer.toString() + "'></div>");
 
-        this.inorder_helper(this.ast);
+        let currList = []
+        this.get_expr(this.ast, currList, true)
+        for (var i = 0; i < currList.length; i++) {
+            let left = "";
+            let right = "";
+            if (i == 0 && currList[i].paren_level > 0 || i > 0 && currList[i].paren_level > currList[i - 1].paren_level) {
+                left = "(";
+            }
+            if (i == currList.length - 1 && currList[i].paren_level > 0 || i < currList.length - 1 && currList[i].paren_level > currList[i + 1].paren_level) {
+                right = ")"
+            }
+            let dom_el = "<div class='equation' onclick='handle_eval(\"" + currDomLayer.toString() + "\", \"" 
+            + currList[i].index.toString() + "\")' id='" + currDomLayer.toString() 
+            + "index" + currList[i].index.toString() + "' style='display:inline'>" + left + currList[i].val + right + "</div>";
+            $('#output' + currDomLayer.toString()).append(dom_el);
+        }
+        console.log(currList);
+        //this.inorder_helper(this.ast);
 
     }
     
